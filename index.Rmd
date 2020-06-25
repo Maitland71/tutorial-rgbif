@@ -1,0 +1,175 @@
+---
+title: "El paquete rgbif de R para búsqueda y recuperación de datos en GBIF"
+author: "Manuel Vargas"
+date: "2020-06-25"
+output:
+  html_document:
+    theme: readable    
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Recursos de interés
+* Repositorio de rgbif en GitHub: [ropensci/rgbif: Interface to the Global Biodiversity Information Facility API](https://github.com/ropensci/rgbif).
+* Documentación de rgbif en CRAN: [CRAN - Package rgbif](https://cran.r-project.org/web/packages/rgbif/).
+* Tutorial de rgbif en rOpenScience: [Introduction to rgbif - rOpenSci:rgbif](https://docs.ropensci.org/rgbif/articles/rgbif.html).
+
+* Documentación del API de GBIF: [GBIF REST API](https://www.gbif.org/developer/summary).
+* Lista curada de API: [A Curated List of 100 Cool and Fun Public APIs to Inspire Your Next Project](https://medium.com/better-programming/a-curated-list-of-100-cool-and-fun-public-apis-to-inspire-your-next-project-7600ce3e9b3).
+
+
+## Introducción
+El paquete [rgbif](https://github.com/ropensci/rgbif) del lenguaje de programación [R](https://www.r-project.org/) proporciona acceso a los datos compartidos a través de la interfaz de programación de aplicaciones de la [Infraestructura Mundial de Información en Biodiversidad (GBIF)](https://www.gbif.org/).
+
+Una [interfaz de programación de aplicaciones (API, _Application Programming Interface_)](https://en.wikipedia.org/wiki/Application_programming_interface) es un conjunto de rutinas que brindan acceso a la funcionalidad contenida en un paquete de software, de manera que pueda pueda ser utilizada desde otros programas. En la actualidad, es común ofrecer acceso a los datos de una empresa u organización a través de un API que puede invocarse a través de solicitudes [HTTP (_HyperText Transfer Protocol_, Protocolo de transferencia de hipertexto)](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol), el cual es el protocolo de comunicación que se utiliza en la Web.
+
+El [API de GBIF](https://www.gbif.org/developer/summary) proporciona acceso a varios tipos de datos compartidos a través de GBIF, tales como especies, registros de presencia, mapas y noticias. El API puede invocarse a través de direcciones web (ej. [https://api.gbif.org/v1/occurrence/search?scientificname=Puma+concolor](https://api.gbif.org/v1/occurrence/search?scientificname=Puma+concolor)). Los datos son retornados por el API en formato [_JavaScript Object Notation_ (JSON)](https://www.json.org/).
+
+El paquete ```rgbif``` implementa funciones en R que acceden el API de GBIF, lo que facilita sustancialmente el acceso a los datos de GBIF desde R. ```rgbif``` es parte de [rOpenSci](https://ropensci.org/), una iniciativa que impulsa la investigación reproducible por medio de datos abiertos y software reutilizable.
+
+## Preparativos
+Instalación de paquetes:
+```{r eval = FALSE}
+# Instalación de rgbif
+install.packages("rgbif")
+
+# Instalación de protolite
+install.packages("protolite")
+```
+
+Carga de paquetes:
+```{r message = FALSE}
+# Carga de sf
+library(sf)
+
+# Carga de raster
+library(raster)
+
+# Carga de rgbif
+library(rgbif)
+
+# Carga de protolite
+library(protolite)
+```
+
+## Uso básico
+
+### Conteo de registros de presencia
+La función [occ_count()](https://docs.ropensci.org/rgbif/reference/occ_count.html) retorna la cantidad de registros de presencia de acuerdo con criterios como código del taxón (_taxonKey_), tipo de registro (_basisOfRecord_), país y año, entre otros.
+
+Ejemplos de uso de ```occ_count```:
+```{r}
+# Total de registros de presencia en GBIF
+occ_count()
+
+# Cantidad de registros georreferenciados
+occ_count(georeferenced = TRUE)
+
+# Cantidad de registros ubicados en Costa Rica
+## Obtención del código del país
+cr_isocode <- isocodes[grep("Costa Rica", isocodes$name), "code"]
+## Conteo
+occ_count(country=cr_isocode)
+
+# Cantidad de registros de Phascolarctos cinereus (koala) ubicados en Australia, georreferenciados
+## Obtención del código del taxón
+name <- name_backbone(name='Phascolarctos cinereus', rank='species')
+name[, c('usageKey', 'scientificName')]
+
+## Conteo
+occ_count(taxonKey = 2440012, 
+          country = 'AU',
+          georeferenced = TRUE
+)
+```
+
+### Búsqueda de registros de presencia
+Las funciones [occ_search()](https://docs.ropensci.org/rgbif/reference/occ_search.html) y [occ_data()](https://docs.ropensci.org/rgbif/reference/occ_data.html) retornan los registros de presencia que cumplen con criterios como nombre científico, país, continente, fecha y otros.
+
+```occ_search``` retorna un resumen de resultados como los del paquete [dplyr de Tidyverse](https://dplyr.tidyverse.org/), mientras que ```occ_data``` está optimizada para ser más eficiente.
+
+Ambas funciones retornan un **máximo de 100000** registros en cada llamada.
+
+
+Ejemplos de uso de ```occ_search``` y ```occ_data```:
+```{r results=FALSE}
+# Registros de presencia de manigordos en Costa Rica, georreferenciados y sin problemas detectados de georreferenciación (ej. coordenadas invertidas)
+occ_search(
+  scientificName = 'Leopardus pardalis', 
+  country = 'CR', 
+  hasCoordinate = TRUE, 
+  hasGeospatialIssue = FALSE
+)
+```
+
+```{r}
+# Consulta con lista de campos para desplegar
+occ_search(
+  scientificName = 'Leopardus pardalis', 
+  country = 'CR', 
+  hasCoordinate = TRUE, 
+  hasGeospatialIssue = FALSE,
+  fields = c('scientificName', 'decimalLongitude', 'decimalLatitude')
+)
+```
+
+
+### Mapas
+La función [mvt_fetch()](https://docs.ropensci.org/rgbif/reference/mvt_fetch.html) es un _wrapper_ al [API de mapas de GBIF](https://www.gbif.org/es/developer/maps).
+
+```{r}
+# Consulta para retornar el mapa
+m <- mvt_fetch(taxonKey = 2440012)
+
+# Tipo de datos del objeto retornado
+class(m)
+
+# Mapeo
+plot(m$geometry, axes = TRUE, graticule = TRUE)
+
+#plot(st_crop(m, c(xmin=-150, xmax=-125, ymin=-60, ymax=-20)))
+```
+
+## Uso en combinación con sf y raster
+Obtención de datos:
+```{r}
+# Registros de presencia de koalas en Oceanía
+phascolarctos_cinereus_gbif <- 
+  occ_search(
+    scientificName = 'Phascolarctos cinereus', 
+    country = 'AU',
+    hasCoordinate = TRUE, 
+    hasGeospatialIssue = FALSE,
+    fields = c('scientificName', 'decimalLongitude', 'decimalLatitude'),
+    limit = 1500
+  )
+
+# Clase de los datos retornados por occ_search()
+class(phascolarctos_cinereus_gbif)
+class(phascolarctos_cinereus_gbif$data)
+
+# Conversión a objeto sf
+phascolarctos_cinereus_sf <- 
+  st_as_sf(phascolarctos_cinereus_gbif$data, 
+           coords = c("decimalLongitude", "decimalLatitude"), 
+           crs = 4326
+  )
+
+
+# Capa de altitud
+altitude <- getData("worldclim", var="alt", res=10)
+```
+
+Mapeo:
+```{r results=FALSE, message=FALSE, warning=FALSE}
+# Mapeo
+plot(altitude, ext = extent(110, 160, -50, -10), reset=FALSE)
+plot(phascolarctos_cinereus_sf, col='black', add=TRUE)
+```
